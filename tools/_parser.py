@@ -17,19 +17,19 @@ from pprint import pprint
 # - name
 # - type (where)
 # - (function pointer) that handles the arguments to this directive (usually a simple set conf slot)
-# - conf level
-# - offset
+# - conf level (unnecessary in most cases, type handles it)
+# - offset (like conf level)
 # - post processing handler (function pointer)
 
 
 exp = re.compile(r"""{\s*?
-              ngx_string\("(?P<name>[a-z0-9_]+?)"\)\s*?,\s*?
-              (?P<where>(([A-Z0-9_]+)\s*\|?)+?)\s*?,\s*?
-              (?P<bla>[^\n}]+?)\s*?,\s*?
-              (?P<bla2>[^\n}]+?)\s*?,\s*?
-              (?P<bla3>[^\n}]+?)\s*?,\s*?
-              (?P<bla4>[^\n}]+?)\s*?
-              }""", re.MULTILINE | re.VERBOSE)
+            ngx_string\("(?P<name>[a-z0-9_]+)"\)\s*,\s*
+            (?P<where>[A-Z0-9_]+(?:\s*\|\s*[A-Z0-9_]+)*)\s*,
+            (?P<setter>(?:\([^)]*\)|[^,()])+),\s*
+            (?P<conf_level>(?:\([^)]*\)|[^,()])+),\s*
+            (?P<offset>(?:\([^)]*\)|[^,()])+),\s*
+            (?P<postproc>(?:\([^)]*\)|[^,()])+)
+            }""", re.MULTILINE | re.VERBOSE)
 
 def test():
   
