@@ -16,13 +16,13 @@ from pprint import pprint
 
 # http://www.nginxguts.com/2011/09/configuration-directives/
 # - name
-# - type (where)
+# - type/signature (where it's valid, how many arguments does it have, does it accept a block?)
 # - (function pointer) that handles the arguments to this directive (usually a simple set conf slot)
 # - conf level (unnecessary in most cases, type handles it)
 # - offset (like conf level)
 # - post processing handler (function pointer)
 
-def get_exp():
+def get_exps():
     if using_re2:
         import sys
         import StringIO
@@ -30,26 +30,24 @@ def get_exp():
         olds = sys.stdout
         sys.stdout = StringIO.StringIO()
 
-    exp = re.compile(r"""{\s*?
+    exp_command = re.compile(r"""{\s*?
                 ngx_string\("(?P<name>[a-z0-9_]+)"\)\s*,\s*
-                (?P<where>[A-Z0-9_]+(?:\s*\|\s*[A-Z0-9_]+)*)\s*,
+                (?P<signature>[A-Z0-9_]+(?:\s*\|\s*[A-Z0-9_]+)*)\s*,
                 (?P<setter>(?:\([^)]*\)|[^,()])+),\s*
                 (?P<conf_level>(?:\([^)]*\)|[^,()])+),\s*
                 (?P<offset>(?:\([^)]*\)|[^,()])+),\s*
                 (?P<postproc>(?:\([^)]*\)|[^,()])+)
                 }""", re.MULTILINE | re.VERBOSE)
 
+    exp_def = re.compile(r"#define (?P<def>NGX_[^ ]+)")
+
     if using_re2:
         sys.stdout = olds
-    return exp
+    return {'command': exp_command, 'def': exp_def}
 
-exp = get_exp()
-
-def parse_file(path):
+def parse_file(path, exp):
     with open(path) as f:
-        print(".")
         for m in exp.finditer(f.read()):
-            print("-")
             yield m.groupdict()
 
 class Absent(object):
@@ -75,11 +73,46 @@ if __name__ == '__main__':
         exit(1)
     
 
+    class Directive(object):
+        def __init__(self, name, signature, setter, conf_level, offset, postproc):
+            self.name = name
+            self.signature = signature
+            self.setter = setter
+            self.conflevel = conf_level
+            self.offset = offset
+            self.postproc = postproc
+
+        def __str__(self):
+            return "%s (%s)" % (self.name, self.signature)
+
+    class Def(object):
+        def __init__(self, name):
+            self.name = name
+
+
+    directives = []
+    defs = set(['NULL', 'NGX_OFF_T_LEN', '0', '1'])
+
+    exps = get_exps()
+
     for i in os.walk(args.nginx_source, followlinks=True):
         for f in i[2]:
             fn = "%s/%s" % (i[0], f)
             print("Parsing %s" % fn)
-            for conf in parse_file(fn):
+            for conf in parse_file(fn, exps['command']):
                 conf = {k:v.strip() for k,v in conf.items()}
-                print("Valid name: %s (%s)" % (conf['name'], conf['where']))
+                directives.append(Directive(**conf))
+            for def_ in parse_file(fn, exps['def']):
+                defs.add(def_['def'].strip())
+
+    for d in directives:
+        for s in d.signature.split('|'):
+            if s.strip() not in defs:
+                print("uh-oh: %s" % s)
+
+        # TODO: build list of directive dependencies
+        #       generate pyparsing grammar
+
+
+
  
